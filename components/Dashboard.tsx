@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { AnalysisResult } from '../types';
 import { 
@@ -9,7 +8,7 @@ import {
   TrendingUp, TrendingDown, Activity, AlertTriangle, CheckCircle2, 
   FileText, LayoutDashboard, ArrowUpRight, ArrowDownRight, Filter, 
   Download, FileSpreadsheet, BarChart3, PieChart as PieChartIcon, 
-  LineChart as LineChartIcon, DollarSign, Wallet
+  LineChart as LineChartIcon, DollarSign, Wallet, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { utils, writeFile } from 'xlsx';
 
@@ -19,6 +18,99 @@ interface DashboardProps {
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+
+// --- Helper Components for Report Viewer ---
+
+const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+  // Simple parser to handle bold text (**text**) and bullet points
+  const lines = content.split('\n');
+  return (
+    <div className="space-y-2 text-slate-700 leading-relaxed">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} className="h-2"></div>;
+        
+        // Handle Bullet points
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const text = trimmed.substring(2);
+          return (
+            <div key={idx} className="flex items-start ml-4">
+              <span className="mr-2 mt-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full flex-shrink-0"></span>
+              <span dangerouslySetInnerHTML={{ 
+                __html: text.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>') 
+              }} />
+            </div>
+          );
+        }
+
+        // Handle normal text
+        return (
+          <p key={idx} dangerouslySetInnerHTML={{ 
+            __html: trimmed.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900 font-semibold">$1</strong>') 
+          }} />
+        );
+      })}
+    </div>
+  );
+};
+
+const CollapsibleSection: React.FC<{ title: string; content: string; defaultOpen?: boolean }> = ({ title, content, defaultOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden mb-4 bg-white shadow-sm transition-all hover:shadow-md">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+      >
+        <h3 className="font-bold text-slate-800 flex items-center text-lg">
+          {isOpen ? <ChevronDown className="w-5 h-5 mr-2 text-indigo-600" /> : <ChevronRight className="w-5 h-5 mr-2 text-slate-400" />}
+          {title.replace(/^#+\s*/, '')}
+        </h3>
+      </button>
+      
+      {isOpen && (
+        <div className="p-6 bg-white animate-fade-in border-t border-slate-100">
+          <MarkdownRenderer content={content} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ReportViewer: React.FC<{ report: string }> = ({ report }) => {
+  // Split report by Headers (##)
+  const sections = useMemo(() => {
+    if (!report) return [];
+    // Split by lines starting with ##
+    const parts = report.split(/(?=^##\s)/m);
+    return parts.filter(p => p.trim().length > 0).map(part => {
+      const lines = part.split('\n');
+      const title = lines[0].trim();
+      const content = lines.slice(1).join('\n').trim();
+      return { title, content };
+    });
+  }, [report]);
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4">
+      {sections.length > 0 ? (
+        sections.map((sec, idx) => (
+          <CollapsibleSection 
+            key={idx} 
+            title={sec.title} 
+            content={sec.content} 
+            defaultOpen={idx === 0 || idx === 1} // Open first two sections by default
+          />
+        ))
+      ) : (
+        <div className="p-8 text-center text-slate-400">กำลังประมวลผลรูปแบบรายงาน...</div>
+      )}
+    </div>
+  );
+};
+
+// --- Main Dashboard Component ---
 
 export const Dashboard: React.FC<DashboardProps> = ({ data, onReset }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'report'>('dashboard');
@@ -378,14 +470,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset }) => {
         </div>
       ) : (
         /* REPORT VIEW - Enhanced Readability */
-        <div className="animate-fade-in bg-white rounded-2xl shadow-xl border border-slate-200 max-w-4xl mx-auto overflow-hidden">
-          <div className="bg-slate-50 border-b border-slate-200 p-8 md:p-10 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="animate-fade-in bg-white rounded-2xl shadow-xl border border-slate-200 max-w-4xl mx-auto overflow-hidden min-h-[600px] flex flex-col">
+          <div className="bg-slate-50 border-b border-slate-200 p-8 flex flex-col md:flex-row justify-between items-center gap-6 sticky top-0 z-10">
             <div className="text-center md:text-left">
                <div className="flex items-center justify-center md:justify-start mb-2">
                  <div className="bg-indigo-600 text-white p-2 rounded-lg mr-3">
                    <FileText className="w-6 h-6" />
                  </div>
-                 <h1 className="text-2xl md:text-3xl font-bold text-slate-900">รายงานวิเคราะห์ทางการเงิน</h1>
+                 <h1 className="text-2xl font-bold text-slate-900">รายงานวิเคราะห์ทางการเงิน</h1>
                </div>
                <p className="text-slate-500 ml-0 md:ml-14">SmartAcc Analysis Official Report</p>
             </div>
@@ -397,21 +489,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, onReset }) => {
             </div>
           </div>
           
-          <div className="p-8 md:p-14 bg-white">
-            <article className="prose prose-lg prose-slate max-w-none prose-headings:text-indigo-900 prose-headings:font-bold prose-a:text-indigo-600 prose-strong:text-slate-800 prose-li:text-slate-600">
-               {/* Markdown content rendered here */}
-               <div className="markdown-body whitespace-pre-line leading-relaxed">
-                 {data.formalReport || "กำลังสร้างรายงาน..."}
-               </div>
-            </article>
-            
-            <div className="mt-16 pt-8 border-t border-slate-100 flex flex-col items-center justify-center text-slate-400 text-sm">
-              <div className="flex items-center mb-2">
-                 <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                 Generated by SmartAcc AI Engine
-              </div>
-              <p>ข้อมูลในเอกสารนี้เป็นเพียงการวิเคราะห์เบื้องต้น ผู้ใช้ควรตรวจสอบความถูกต้องกับเอกสารต้นฉบับอีกครั้ง</p>
-            </div>
+          <div className="p-8 bg-slate-50/50 flex-grow">
+             <ReportViewer report={data.formalReport || "กำลังสร้างรายงาน..."} />
+             
+             <div className="mt-12 text-center text-slate-400 text-sm">
+                <p>Generated by SmartAcc AI Engine</p>
+             </div>
           </div>
         </div>
       )}
